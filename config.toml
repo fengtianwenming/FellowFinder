@@ -1,0 +1,21 @@
+[search]
+scholar_profile_url = "https://scholar.google.com/citations?hl=zh-CN&user=tg-Srw0AAAAJ&view_op=list_works&sortby=pubdate"
+keywords = ["transfer learning", "solar power prediction"]
+keyword_operator = "or"
+fellow_titles = ["IEEE Fellow", "Life Fellow"]
+
+[search.fellow_title_variants]
+"IEEE Fellow" = ["IEEE Fellow", "Fellow of IEEE", "IEEE PES Fellow"]
+"Life Fellow" = ["Life Fellow", "IEEE Life Fellow", "Life Fellow of IEEE"]
+
+[crawler]
+max_profile_pages = 3
+max_citing_works_per_target = 50
+max_authors_per_citing_work = 1
+reset_session_every_citing_works = 10
+max_workers = 4
+author_search_results = 5
+request_delay_seconds = 0.2
+
+[output]
+dir = "output"
