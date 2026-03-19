@@ -15,7 +15,7 @@ from tqdm import tqdm
 from .config import SearchConfig
 from .matching import build_author_matches, deduplicate_author_matches, is_blocked_evidence_url
 from .models import AuthorContext, AuthorMatch, TargetPaper
-from .utils import first_non_empty, matches_keywords, normalize_text, truncate_text
+from .utils import first_non_empty, matches_keywords, normalize_doi, normalize_text, truncate_text
 
 
 USER_AGENT = (
@@ -33,9 +33,9 @@ class FellowFinder:
 
     def run(self) -> list[dict[str, Any]]:
         publications = self.fetch_target_publications()
-        target_papers = [paper for paper in publications if matches_keywords(paper.title, self.config.keywords, self.config.keyword_operator)]
+        target_papers = self.select_target_papers(publications)
         if not target_papers:
-            print("No target papers matched the configured keywords.", file=sys.stderr)
+            print("No target papers matched the configured selection rules.", file=sys.stderr)
             return []
 
         findings: list[dict[str, Any]] = []
@@ -45,19 +45,71 @@ class FellowFinder:
             findings.append(self.process_target_paper(paper))
         return findings
 
+    def select_target_papers(self, publications: list[TargetPaper]) -> list[TargetPaper]:
+        selected: list[TargetPaper] = []
+        seen_keys: set[str] = set()
+        title_filters = {normalize_text(title) for title in self.config.target_paper_titles}
+
+        for paper in publications:
+            normalized_title = normalize_text(paper.title)
+            matches_explicit_title = normalized_title in title_filters if title_filters else False
+            matches_keywords_filter = bool(self.config.keywords) and matches_keywords(
+                paper.title,
+                self.config.keywords,
+                self.config.keyword_operator,
+            )
+            if not matches_explicit_title and not matches_keywords_filter:
+                continue
+            self.append_unique_target_paper(selected, seen_keys, paper)
+
+        for doi in self.config.target_paper_dois:
+            paper = self.build_target_paper_from_doi(doi)
+            if paper is None:
+                print(f"Skipping unresolved DOI target: {doi}", file=sys.stderr)
+                continue
+            self.append_unique_target_paper(selected, seen_keys, paper)
+
+        return selected
+
+    def append_unique_target_paper(
+        self,
+        selected: list[TargetPaper],
+        seen_keys: set[str],
+        paper: TargetPaper,
+    ) -> None:
+        key = paper.openalex_id or normalize_doi(paper.scholar_url or "") or normalize_text(paper.title)
+        if not key or key in seen_keys:
+            return
+        seen_keys.add(key)
+        selected.append(paper)
+
+    def build_target_paper_from_doi(self, doi: str) -> TargetPaper | None:
+        work = self.find_openalex_work_by_doi(doi)
+        if not work:
+            return None
+        return TargetPaper(
+            title=work.get("display_name", "").strip() or doi,
+            year=str(work.get("publication_year", "") or ""),
+            scholar_url=work.get("doi") or doi,
+            openalex_id=work.get("id"),
+        )
+
     def process_target_paper(self, paper: TargetPaper) -> dict[str, Any]:
         self.reset_search_context()
-        openalex_work = self.find_openalex_work(paper.title)
-        if not openalex_work:
-            return {
-                "target_paper": paper.title,
-                "target_year": paper.year,
-                "status": "openalex_not_found",
-                "matches": [],
-            }
+        openalex_id = paper.openalex_id
+        if not openalex_id:
+            openalex_work = self.find_openalex_work(paper.title)
+            if not openalex_work:
+                return {
+                    "target_paper": paper.title,
+                    "target_year": paper.year,
+                    "status": "openalex_not_found",
+                    "matches": [],
+                }
+            openalex_id = openalex_work["id"]
 
-        paper.openalex_id = openalex_work["id"]
-        citing_works = self.fetch_citing_works(paper.openalex_id)
+        paper.openalex_id = openalex_id
+        citing_works = self.fetch_citing_works(openalex_id)
         matched_articles = self.process_citing_works_parallel(paper.title, citing_works)
         return {
             "target_paper": paper.title,
@@ -66,6 +118,17 @@ class FellowFinder:
             "openalex_id": paper.openalex_id,
             "matches": matched_articles,
         }
+
+    def find_openalex_work_by_doi(self, doi: str) -> dict[str, Any] | None:
+        normalized_doi = normalize_doi(doi)
+        if not normalized_doi:
+            return None
+        url = f"https://api.openalex.org/works/https://doi.org/{quote(normalized_doi, safe='')}"
+        try:
+            response = self.get(url)
+        except requests.RequestException:
+            return None
+        return response.json()
 
     def process_citing_works_parallel(self, target_title: str, citing_works: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not citing_works:

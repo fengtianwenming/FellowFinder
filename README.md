@@ -73,3 +73,18 @@ uv run python main.py --config config.toml
 - `fellowfinder/models.py`: 数据模型
 - `fellowfinder/output.py`: JSON/CSV 输出
 - `fellowfinder/utils.py`: 通用文本与辅助函数
+
+## Target Paper Selection
+
+Besides `search.keywords`, the config also supports explicit paper selection:
+
+```toml
+[search]
+target_paper_titles = ["Specific Paper Title"]
+target_paper_dois = ["10.1109/XXX.2024.1234567"]
+```
+
+- `target_paper_titles` matches fetched publications by normalized exact title.
+- `target_paper_dois` resolves the paper directly through OpenAlex.
+- Keywords, titles, and DOIs are combined as a union.
+- At least one of `search.keywords`, `search.target_paper_titles`, or `search.target_paper_dois` must be configured.

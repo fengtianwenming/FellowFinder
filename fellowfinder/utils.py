@@ -10,6 +10,13 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip().lower()
 
 
+def normalize_doi(value: str) -> str:
+    normalized = normalize_text(value)
+    normalized = re.sub(r"^https?://(dx\.)?doi\.org/", "", normalized)
+    normalized = re.sub(r"^doi:\s*", "", normalized)
+    return normalized.strip().strip("/")
+
+
 def first_non_empty(*values: Any) -> Any:
     for value in values:
         if value:

@@ -11,6 +11,8 @@ class SearchConfig:
     scholar_profile_url: str
     target_author_name: str | None
     keywords: list[str]
+    target_paper_titles: list[str]
+    target_paper_dois: list[str]
     keyword_operator: str
     fellow_titles: list[str]
     fellow_title_variants: dict[str, list[str]]
@@ -28,6 +30,8 @@ class SearchConfig:
     def from_toml(cls, payload: dict[str, Any], base_dir: Path) -> "SearchConfig":
         search = payload.get("search", {})
         keywords = [str(item).strip() for item in search.get("keywords", []) if str(item).strip()]
+        target_paper_titles = [str(item).strip() for item in search.get("target_paper_titles", []) if str(item).strip()]
+        target_paper_dois = [str(item).strip() for item in search.get("target_paper_dois", []) if str(item).strip()]
         fellow_titles = [str(item).strip() for item in search.get("fellow_titles", []) if str(item).strip()]
         raw_variants = search.get("fellow_title_variants", {})
         fellow_title_variants = {
@@ -41,8 +45,11 @@ class SearchConfig:
         profile_url = str(search.get("scholar_profile_url", "")).strip()
         if not profile_url:
             raise ValueError("search.scholar_profile_url is required")
-        if not keywords:
-            raise ValueError("search.keywords must not be empty")
+        if not keywords and not target_paper_titles and not target_paper_dois:
+            raise ValueError(
+                "Configure at least one of search.keywords, "
+                "search.target_paper_titles, or search.target_paper_dois"
+            )
         if not fellow_titles:
             raise ValueError("search.fellow_titles must not be empty")
 
@@ -52,6 +59,8 @@ class SearchConfig:
             scholar_profile_url=profile_url,
             target_author_name=str(search.get("target_author_name", "")).strip() or None,
             keywords=keywords,
+            target_paper_titles=target_paper_titles,
+            target_paper_dois=target_paper_dois,
             keyword_operator=operator,
             fellow_titles=fellow_titles,
             fellow_title_variants=fellow_title_variants,
